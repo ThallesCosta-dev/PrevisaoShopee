@@ -187,7 +187,7 @@ def generate_purchase_recommendations(daily_sales, forecast_periods=30):
                     historical_mean_daily = variation_data['Unidades (Pedido pago)'].mean()
                     historical_std_daily = variation_data['Unidades (Pedido pago)'].std()
                     
-                    # Converte para valores mensais
+                    # Calcula estatísticas básicas
                     historical_mean_monthly = historical_mean_daily * 30
                     historical_std_monthly = historical_std_daily * 30
                     
@@ -212,29 +212,38 @@ def generate_purchase_recommendations(daily_sales, forecast_periods=30):
                     # Pega previsão diária do Prophet
                     predicted_daily = next_month_forecast['yhat'].mean()
                     
-                    # Converte para mensal
-                    predicted_monthly = predicted_daily * 30
-                    
-                    # Verifica se a previsão mensal está muito baixa
-                    if predicted_monthly < (historical_mean_monthly * 0.5):
-                        recent_data = prophet_data.tail(30)
-                        recent_mean_monthly = recent_data['y'].mean() * 30
-                        
-                        if recent_mean_monthly > (predicted_monthly * 1.5):
-                            predicted_monthly = historical_mean_monthly * 0.9
+                    # Calcula a previsão mensal usando estatísticas
+                    predicted_monthly = min(
+                        historical_mean_monthly + historical_std_monthly,  # Média + 1 desvio padrão
+                        historical_mean_monthly * 1.3  # Máximo de 30% acima da média
+                    )
                     
                     # Ajusta para dezembro se necessário
                     if next_month_start.month == 12:
                         predicted_monthly *= 0.7
                     
-                    # Aplica limites nos valores mensais
-                    predicted_monthly = min(predicted_monthly, historical_mean_monthly + 3 * historical_std_monthly)
-                    predicted_monthly = max(predicted_monthly, historical_mean_monthly * 0.5)
+                    # Calcula limites usando desvio padrão
+                    lower_bound_monthly = max(
+                        historical_mean_monthly - (1.5 * historical_std_monthly),
+                        historical_mean_monthly * 0.7
+                    )
                     
-                    # Calcula limites e sugestão com base nos valores mensais
-                    lower_bound_monthly = max(0, predicted_monthly * 0.7)
-                    upper_bound_monthly = predicted_monthly * 1.3
-                    suggestion_monthly = round(predicted_monthly * 1.2)
+                    upper_bound_monthly = min(
+                        historical_mean_monthly + (2 * historical_std_monthly),
+                        historical_mean_monthly * 1.5
+                    )
+                    
+                    # Sugestão de compra
+                    suggestion_monthly = round(min(
+                        predicted_monthly * 1.2,
+                        historical_mean_monthly * 1.3
+                    ))
+                    
+                    # Garante que todos os valores são positivos e lógicos
+                    predicted_monthly = max(0, round(predicted_monthly))
+                    lower_bound_monthly = max(0, round(lower_bound_monthly))
+                    upper_bound_monthly = max(lower_bound_monthly, round(upper_bound_monthly))
+                    suggestion_monthly = max(lower_bound_monthly, round(suggestion_monthly))
                     
                     recommendations.append({
                         'SKU Principal': sku,
@@ -364,5 +373,5 @@ def main(directory_path):
 
 if __name__ == "__main__":
     # Usa o diretório atual como padrão
-    directory_path = "C:/Users/natal/OneDrive/Área de Trabalho/previsão de pedidos"  
+    directory_path = "C:/Users/HQZ/Desktop/Thalles/previsão de pedidos/"  
     recommendations = main(directory_path)
