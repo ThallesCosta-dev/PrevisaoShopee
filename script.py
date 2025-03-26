@@ -37,21 +37,41 @@ def analisar_vendas_periodo(periodo_inicial, periodo_final, lista_skus):
         mascara = (df_total['SKU da Variação'].isin(lista_skus)) | (df_total['SKU Principle'].isin(lista_skus))
         df_filtrado = df_total[mascara]
         
-        # Análise por SKU da Variação
-        analise_variacao = {
-            'quantidade_vendida': df_filtrado.groupby('SKU da Variação')['Unidades (Pedido realizado)'].sum(),
-            'valor_total': df_filtrado.groupby('SKU da Variação')['Vendas (Pedido pago) (BRL)'].sum(),
-        }
+        # Converte a coluna de vendas para numérico
+        df_filtrado['Vendas (Pedido pago) (BRL)'] = pd.to_numeric(df_filtrado['Vendas (Pedido pago) (BRL)'], errors='coerce')
+        df_filtrado['Unidades (Pedido realizado)'] = pd.to_numeric(df_filtrado['Unidades (Pedido realizado)'], errors='coerce')
         
-        # Análise por SKU Principle
-        analise_principle = {
-            'quantidade_vendida': df_filtrado.groupby('SKU Principle')['Unidades (Pedido realizado)'].sum(),
-            'valor_total': df_filtrado.groupby('SKU Principle')['Vendas (Pedido pago) (BRL)'].sum(),
-        }
+        # Cria um DataFrame combinado com ambos os SKUs
+        df_resultados = df_filtrado.groupby(['SKU da Variação', 'SKU Principle']).agg({
+            'Unidades (Pedido realizado)': 'sum',
+            'Vendas (Pedido pago) (BRL)': 'sum'
+        }).reset_index()
+        
+        # Renomeia as colunas para melhor compreensão
+        df_resultados.columns = ['SKU da Variação', 'SKU Principle', 'Quantidade Vendida', 'Valor Total (BRL)']
+        
+        # Cria nome do arquivo com o período analisado
+        nome_arquivo = f'relatorio_vendas_{periodo_inicial.strftime("%Y%m%d")}_{periodo_final.strftime("%Y%m%d")}.xlsx'
+        
+        # Cria um Excel com duas abas (resultados e totais)
+        with pd.ExcelWriter(nome_arquivo) as writer:
+            # Aba de resultados
+            df_resultados.to_excel(writer, sheet_name='Resultados', index=False)
+            
+            # Aba de totais
+            df_totais = pd.DataFrame({
+                'Métrica': ['Total Unidades Vendidas', 'Total Vendas (BRL)'],
+                'Valor': [
+                    df_resultados['Quantidade Vendida'].sum(),
+                    df_resultados['Valor Total (BRL)'].sum()
+                ]
+            })
+            df_totais.to_excel(writer, sheet_name='Totais', index=False)
+        
+        print(f"\nRelatório exportado com sucesso: {nome_arquivo}")
         
         return {
-            'variacao': analise_variacao,
-            'principle': analise_principle,
+            'resultados': df_resultados,
             'arquivos_processados': arquivos_processados
         }
     
@@ -73,30 +93,13 @@ if __name__ == "__main__":
         skus_desejados
     )
     
-    # Exibe os resultados
+    # Exibe os resultados no console
     if resultados:
         print("\nArquivos processados:")
         for arquivo in resultados['arquivos_processados']:
             print(f"- {arquivo}")
             
-        print("\nResultados por SKU da Variação:")
-        print("\nQuantidade vendida (Unidades):")
-        print(resultados['variacao']['quantidade_vendida'])
-        print("\nValor total (BRL):")
-        print(resultados['variacao']['valor_total'])
-        
-        print("\nResultados por SKU Principle:")
-        print("\nQuantidade vendida (Unidades):")
-        print(resultados['principle']['quantidade_vendida'])
-        print("\nValor total (BRL):")
-        print(resultados['principle']['valor_total'])
-        
-        # Totais gerais
-        total_unidades = resultados['variacao']['quantidade_vendida'].sum()
-        total_vendas = resultados['variacao']['valor_total'].sum()
-        
-        print("\nTotais Gerais:")
-        print(f"Total de Unidades Vendidas: {total_unidades}")
-        print(f"Total de Vendas (BRL): R$ {total_vendas:.2f}")
+        print("\nResultados:")
+        print(resultados['resultados'])
     else:
         print("Nenhum dado encontrado para o período especificado.")
